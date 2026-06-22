@@ -299,7 +299,7 @@ function readHumanInput(player) {
   const handbrake = keys.has(" ");
 
   player.steer = Number(right) - Number(left);
-  player.throttle = up ? 1 : 0.42;
+  player.throttle = up ? 1 : 0.18;
   player.brake = down ? 1 : 0;
   player.boost = handbrake ? 1 : 0;
 }
@@ -371,8 +371,9 @@ function movePlayer(player, dt) {
   else updateAi(player, dt);
 
   const speed = Math.hypot(player.vx, player.vy);
-  const steerPower = lerp(2.55, 1.35, clamp(speed / 420, 0, 1));
-  player.angle += player.steer * steerPower * dt;
+  const steerPower = lerp(3.45, 1.85, clamp(speed / 455, 0, 1));
+  const lowSpeedAssist = 1 + clamp(1 - speed / 155, 0, 1) * 0.45;
+  player.angle += player.steer * steerPower * lowSpeedAssist * dt;
 
   const forwardX = Math.cos(player.angle);
   const forwardY = Math.sin(player.angle);
@@ -381,19 +382,21 @@ function movePlayer(player, dt) {
   const forwardSpeed = player.vx * forwardX + player.vy * forwardY;
   const sideSpeed = player.vx * sideX + player.vy * sideY;
 
-  const acceleration = player.throttle * 360 - player.brake * 420;
+  const brakingForce = forwardSpeed > 0 ? 720 : 480;
+  const acceleration = player.throttle * 520 - player.brake * brakingForce;
   player.vx += forwardX * acceleration * dt;
   player.vy += forwardY * acceleration * dt;
 
-  const grip = player.boost > 0 ? 2.1 : 7.8;
+  const grip = player.boost > 0 ? 2.8 : 11.4;
   player.vx -= sideX * sideSpeed * grip * dt;
   player.vy -= sideY * sideSpeed * grip * dt;
 
-  const drag = player.boost > 0 ? 0.995 : 0.988;
+  const coasting = player.throttle < 0.25 && player.brake === 0;
+  const drag = player.boost > 0 ? 0.996 : coasting ? 0.978 : 0.991;
   player.vx *= drag;
   player.vy *= drag;
 
-  const maxSpeed = player.boost > 0 ? 390 : 335;
+  const maxSpeed = player.boost > 0 ? 420 : 360;
   const nextSpeed = Math.hypot(player.vx, player.vy);
   if (nextSpeed > maxSpeed) {
     player.vx = (player.vx / nextSpeed) * maxSpeed;
