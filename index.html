@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Liquid Cars Prototype</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hud" aria-label="Game controls and score">
+        <div class="brand">
+          <div class="mark" aria-hidden="true"></div>
+          <div>
+            <h1>Liquid Cars</h1>
+            <p>Paint the floor. Repaint everyone else.</p>
+          </div>
+        </div>
+
+        <div class="status">
+          <div>
+            <span class="label">Time</span>
+            <strong id="timeLeft">01:30</strong>
+          </div>
+          <div>
+            <span class="label">Leader</span>
+            <strong id="leaderName">You</strong>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="restartButton" type="button" title="Restart round">Restart</button>
+          <label>
+            <span>AI</span>
+            <select id="aiCount">
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+          </label>
+          <label>
+            <span>Round</span>
+            <select id="roundLength">
+              <option value="45">0:45</option>
+              <option value="90" selected>1:30</option>
+              <option value="150">2:30</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="scoreboard" class="scoreboard" aria-label="Player coverage scores"></div>
+      </section>
+
+      <section class="arena-wrap" aria-label="Liquid Cars game arena">
+        <canvas id="gameCanvas" width="1280" height="800"></canvas>
+        <div id="message" class="message" hidden>
+          <strong id="messageTitle"></strong>
+          <span id="messageBody"></span>
+        </div>
+      </section>
+
+      <section class="help" aria-label="Controls">
+        <span><kbd>W</kbd>/<kbd>Up</kbd> accelerate</span>
+        <span><kbd>S</kbd>/<kbd>Down</kbd> brake</span>
+        <span><kbd>A</kbd>/<kbd>D</kbd> steer</span>
+        <span><kbd>Space</kbd> handbrake</span>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
