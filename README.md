@@ -2,7 +2,7 @@
 
 A quick local browser prototype for a Liquid War-inspired territory game.
 
-Open `index.html` in a browser to play. You control the green vehicle and race against AI drivers. Each vehicle paints liquid onto the arena floor, and painting over another color claims that floor for you. The player with the most painted floor when the timer ends wins.
+Open `index.html` in a browser to play. You control the green vehicle and race against AI drivers. Each vehicle paints liquid onto the arena floor, and painting over another color claims that floor for you. If you close a loop with your liquid, the enclosed floor fills with your color. The player with the most painted floor when the timer ends wins.
 
 ## Controls
 

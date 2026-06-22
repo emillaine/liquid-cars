@@ -8,6 +8,7 @@ const roundLengthSelect = document.getElementById("roundLength");
 const scoreboard = document.getElementById("scoreboard");
 const timeLeftEl = document.getElementById("timeLeft");
 const leaderNameEl = document.getElementById("leaderName");
+const lastCaptureEl = document.getElementById("lastCapture");
 const message = document.getElementById("message");
 const messageTitle = document.getElementById("messageTitle");
 const messageBody = document.getElementById("messageBody");
@@ -16,10 +17,12 @@ const WORLD_W = 1280;
 const WORLD_H = 800;
 const GRID_W = 256;
 const GRID_H = 160;
+const CELL_COUNT = GRID_W * GRID_H;
 const CELL_W = WORLD_W / GRID_W;
 const CELL_H = WORLD_H / GRID_H;
 const MAX_PLAYERS = 6;
 const PAINT_RADIUS = 8;
+const CAPTURE_MIN_CELLS = 24;
 const TICK_RATE = 1 / 60;
 const TWO_PI = Math.PI * 2;
 
@@ -34,8 +37,12 @@ const palette = [
 
 const keys = new Set();
 let players = [];
-let owners = new Int16Array(GRID_W * GRID_H);
+let owners = new Int16Array(CELL_COUNT);
 let scores = new Int32Array(MAX_PLAYERS);
+let solidCells = new Uint8Array(CELL_COUNT);
+let captureVisited = new Uint8Array(CELL_COUNT);
+let captureQueue = new Int32Array(CELL_COUNT);
+let solidCellsReady = false;
 let imageData = new ImageData(GRID_W, GRID_H);
 let paintCanvas = document.createElement("canvas");
 let paintCtx = paintCanvas.getContext("2d");
@@ -44,6 +51,7 @@ let accumulator = 0;
 let roundTime = 90;
 let finished = false;
 let cameraShake = 0;
+let captureEffects = [];
 
 paintCanvas.width = GRID_W;
 paintCanvas.height = GRID_H;
@@ -70,7 +78,20 @@ function formatTime(seconds) {
   return `${minutes}:${remainder}`;
 }
 
+function buildSolidCells() {
+  if (solidCellsReady) return;
+  for (let y = 0; y < GRID_H; y += 1) {
+    for (let x = 0; x < GRID_W; x += 1) {
+      const worldX = (x + 0.5) * CELL_W;
+      const worldY = (y + 0.5) * CELL_H;
+      solidCells[y * GRID_W + x] = isInsideIsland(worldX, worldY) ? 1 : 0;
+    }
+  }
+  solidCellsReady = true;
+}
+
 function resetRound() {
+  buildSolidCells();
   const aiCount = Number(aiCountSelect.value);
   const totalPlayers = clamp(aiCount + 1, 2, MAX_PLAYERS);
   owners.fill(-1);
@@ -79,6 +100,8 @@ function resetRound() {
   roundTime = Number(roundLengthSelect.value);
   finished = false;
   cameraShake = 0;
+  captureEffects = [];
+  lastCaptureEl.textContent = "-";
   message.hidden = true;
 
   const starts = [
@@ -109,6 +132,7 @@ function resetRound() {
       boost: 0,
       aiTimer: 0,
       aiTarget: angle,
+      captureTimer: 0.22 + id * 0.07,
       wobble: Math.random() * TWO_PI
     });
   }
@@ -135,11 +159,21 @@ function sampleOwner(worldX, worldY) {
   return owners[gy * GRID_W + gx];
 }
 
+function claimCell(index, playerId) {
+  const previous = owners[index];
+  if (previous === playerId) return false;
+  if (previous >= 0) scores[previous] -= 1;
+  owners[index] = playerId;
+  scores[playerId] += 1;
+  return true;
+}
+
 function paintAt(player, radius) {
   const gx = Math.floor(player.x / CELL_W);
   const gy = Math.floor(player.y / CELL_H);
   const rx = Math.ceil(radius / CELL_W);
   const ry = Math.ceil(radius / CELL_H);
+  let painted = 0;
 
   for (let y = gy - ry; y <= gy + ry; y += 1) {
     if (y < 0 || y >= GRID_H) continue;
@@ -154,13 +188,80 @@ function paintAt(player, radius) {
       if (isInsideIsland(worldX, worldY)) continue;
 
       const index = y * GRID_W + x;
-      const previous = owners[index];
-      if (previous === player.id) continue;
-      if (previous >= 0) scores[previous] -= 1;
-      owners[index] = player.id;
-      scores[player.id] += 1;
+      if (claimCell(index, player.id)) painted += 1;
     }
   }
+
+  return painted;
+}
+
+function canFlood(index, playerId) {
+  return solidCells[index] === 0 && owners[index] !== playerId;
+}
+
+function pushFloodCell(index, playerId, queueState) {
+  if (captureVisited[index] || !canFlood(index, playerId)) return queueState;
+  captureVisited[index] = 1;
+  captureQueue[queueState.tail] = index;
+  queueState.tail += 1;
+  return queueState;
+}
+
+function captureEnclosedAreas(player) {
+  captureVisited.fill(0);
+  let queueState = { head: 0, tail: 0 };
+
+  for (let x = 0; x < GRID_W; x += 1) {
+    queueState = pushFloodCell(x, player.id, queueState);
+    queueState = pushFloodCell((GRID_H - 1) * GRID_W + x, player.id, queueState);
+  }
+  for (let y = 1; y < GRID_H - 1; y += 1) {
+    queueState = pushFloodCell(y * GRID_W, player.id, queueState);
+    queueState = pushFloodCell(y * GRID_W + GRID_W - 1, player.id, queueState);
+  }
+
+  while (queueState.head < queueState.tail) {
+    const index = captureQueue[queueState.head];
+    queueState.head += 1;
+
+    const x = index % GRID_W;
+    if (x > 0) queueState = pushFloodCell(index - 1, player.id, queueState);
+    if (x < GRID_W - 1) queueState = pushFloodCell(index + 1, player.id, queueState);
+    if (index >= GRID_W) queueState = pushFloodCell(index - GRID_W, player.id, queueState);
+    if (index < CELL_COUNT - GRID_W) queueState = pushFloodCell(index + GRID_W, player.id, queueState);
+  }
+
+  let captured = 0;
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = 0; i < CELL_COUNT; i += 1) {
+    if (captureVisited[i] || solidCells[i] || owners[i] === player.id) continue;
+    captured += 1;
+    sumX += i % GRID_W;
+    sumY += Math.floor(i / GRID_W);
+  }
+
+  if (captured < CAPTURE_MIN_CELLS) return 0;
+
+  for (let i = 0; i < CELL_COUNT; i += 1) {
+    if (captureVisited[i] || solidCells[i] || owners[i] === player.id) continue;
+    claimCell(i, player.id);
+  }
+
+  const centerX = ((sumX / captured) + 0.5) * CELL_W;
+  const centerY = ((sumY / captured) + 0.5) * CELL_H;
+  captureEffects.push({
+    x: centerX,
+    y: centerY,
+    radius: clamp(Math.sqrt(captured) * 7.2, 42, 220),
+    color: player.color,
+    life: 0.85,
+    total: 0.85,
+    amount: captured
+  });
+  lastCaptureEl.textContent = `${player.name} +${captured}`;
+  cameraShake = Math.max(cameraShake, clamp(captured / 90, 3, 10));
+  return captured;
 }
 
 function updatePaintTexture() {
@@ -305,6 +406,12 @@ function movePlayer(player, dt) {
   bounceFromBounds(player);
   bounceFromIsland(player);
   paintAt(player, PAINT_RADIUS + clamp(speed / 85, 0, 5));
+
+  player.captureTimer -= dt;
+  if (player.captureTimer <= 0) {
+    player.captureTimer = 0.24 + player.id * 0.025;
+    captureEnclosedAreas(player);
+  }
 }
 
 function bounceFromBounds(player) {
@@ -366,6 +473,10 @@ function update(dt) {
   }
 
   cameraShake = Math.max(0, cameraShake - dt * 14);
+  for (const effect of captureEffects) {
+    effect.life -= dt;
+  }
+  captureEffects = captureEffects.filter((effect) => effect.life > 0);
   updatePaintTexture();
   renderScoreboard();
 }
@@ -463,6 +574,25 @@ function drawIsland() {
   ctx.fillText("DRY ROCK", cx, cy + 5);
 }
 
+function drawCaptureEffects() {
+  for (const effect of captureEffects) {
+    const t = 1 - effect.life / effect.total;
+    ctx.save();
+    ctx.globalAlpha = (1 - t) * 0.75;
+    ctx.strokeStyle = effect.color;
+    ctx.lineWidth = 5 + t * 10;
+    ctx.beginPath();
+    ctx.arc(effect.x, effect.y, effect.radius * (0.45 + t * 0.75), 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = (1 - t) * 0.9;
+    ctx.fillStyle = effect.color;
+    ctx.font = "900 18px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(`+${effect.amount}`, effect.x, effect.y - effect.radius * 0.28);
+    ctx.restore();
+  }
+}
+
 function drawVehicle(player) {
   const speed = Math.hypot(player.vx, player.vy);
   const length = 34;
@@ -520,6 +650,7 @@ function roundedRect(x, y, width, height, radius) {
 function render() {
   ctx.clearRect(0, 0, WORLD_W, WORLD_H);
   drawFloor();
+  drawCaptureEffects();
 
   for (const player of players) {
     drawVehicle(player);
