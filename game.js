@@ -25,6 +25,11 @@ const PAINT_RADIUS = 8;
 const CAPTURE_MIN_CELLS = 24;
 const TICK_RATE = 1 / 60;
 const TWO_PI = Math.PI * 2;
+const TURN_POWER_LOW_SPEED = 4.85;
+const TURN_POWER_HIGH_SPEED = 2.75;
+const TURN_SPEED_FALLOFF = 520;
+const LOW_SPEED_TURN_ASSIST = 0.68;
+const LOW_SPEED_TURN_THRESHOLD = 185;
 
 const palette = [
   { name: "You", color: "#37f2a3", rgb: [55, 242, 163] },
@@ -371,8 +376,8 @@ function movePlayer(player, dt) {
   else updateAi(player, dt);
 
   const speed = Math.hypot(player.vx, player.vy);
-  const steerPower = lerp(3.45, 1.85, clamp(speed / 455, 0, 1));
-  const lowSpeedAssist = 1 + clamp(1 - speed / 155, 0, 1) * 0.45;
+  const steerPower = lerp(TURN_POWER_LOW_SPEED, TURN_POWER_HIGH_SPEED, clamp(speed / TURN_SPEED_FALLOFF, 0, 1));
+  const lowSpeedAssist = 1 + clamp(1 - speed / LOW_SPEED_TURN_THRESHOLD, 0, 1) * LOW_SPEED_TURN_ASSIST;
   player.angle += player.steer * steerPower * lowSpeedAssist * dt;
 
   const forwardX = Math.cos(player.angle);
